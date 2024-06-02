@@ -1,0 +1,143 @@
+# generate the complexheatmap
+
+library(ComplexHeatmap)
+
+dat1 <- as.data.frame(readxl::read_xlsx("result/Epidemiological data.xlsx"))
+dat1$`P value` <- ifelse(dat1$`P value` == "< 0.0001", 0.00009, dat1$`P value`)
+dat1$`P value` <- as.numeric(dat1$`P value`)
+dat1$`Corresponding letter in plot` <- factor(dat1$`Corresponding letter in plot`,
+                                                levels = c(c(letters, 
+                                                             paste0("a", letters), 
+                                                             paste0("b", letters[1:( length(
+                                                               table(dat1$`Corresponding letter in plot`)) - 26*2)])
+                                                )))
+
+# define interested drug names
+
+expected_class <- c("Anti-microbial agents",
+                    "Immunosuppressive Agents", 
+                    "Antidiarrhea Agents"
+                    # ,"Analgesics and Antipyretics", 
+                    # "Antiemetics", "Cathartics and Laxatives"
+)
+
+drug_select <- c("Finasteride", "Ferrous Sulfate", "Clonazepam",'Amiodarone',"Digoxin",
+                 'Furosemide', 'Domperidone', 'Metoclopramide', 'Pantoprazole', 'Citalopram',
+                 'Mirtazapine', "Quetiapine", 'Trazodone', 'Potassium Chloride', 'Tamsulosin',
+                 'Metoprolol', 'Diltiazem', 'Warfarin', 'Clopidogrel', 'Donepezil',
+                 'Spironolactone')
+rownames(dat1) <- dat1$`Drug Agent`
+select_table <- dat1[drug_select, ]
+
+
+
+# extract plot data frame
+dat1$OR_adj <- ifelse(dat1$OR > 3, 3, dat1$OR)
+dat1$OR_col <- ifelse(dat1$`Significance on agent level` == "Up", "#FF9671", 
+                      ifelse(dat1$`Significance on agent level` == "Down",
+                                                               "#81C26E", "#FFF6F4"))
+mat1 <- dat1[,c("OR_adj", "OR_col")]
+
+
+mat2 <- as.matrix(dat1[,c("P value")])
+rownames(mat2) <-  ifelse(dat1$`Corresponding number in plot` %in% seq(1, nrow(dat1), 50), dat1$`Corresponding number in plot`, '')
+rownames(mat2) <-  ifelse(dat1$`Corresponding number in plot` %in% c(1, 41, 81, 121, 161, 201, 231), dat1$`Corresponding number in plot`, '')
+
+# rownames(mat2) <- NULL
+
+col_fun1 = circlize::colorRamp2(c(0.05,0.01,0.001,0), c("white", "#FFBDE4", "#FF8AAB", "red"))
+
+
+
+# Iterate and set a big gap (last sector in group) or small gap.
+
+big_gap = 0.05
+small_gap = 0.03
+
+sector_grouping <- data.frame(
+  class = names(table(dat1$`Drug Class`)),
+  freq = as.numeric(table(dat1$`Drug Class`))
+)
+
+for(i in 1:nrow(sector_grouping)) {
+  sector_grouping[i,"Gap"] = ifelse(
+    sector_grouping[i,2]==sector_grouping[i+1,2],
+    small_gap,
+    big_gap
+  )
+}
+# The last sector needs fixing (always assumed big)
+sector_grouping$Gap[is.na(sector_grouping$Gap)] = big_gap
+
+
+dat_class <- dat1[,c("Drug Class", "Significance on class level", "Corresponding letter in plot")]
+dat_class <- dat_class[!duplicated(dat1$`Drug Class`), ]
+dat_class$nub_agent <- table(dat1$`Drug Class`)
+rownames(dat_class) <- dat_class$`Corresponding letter in plot`
+sig_drug_class <- dat_class$`Corresponding letter in plot`[dat_class$`Significance on class level` == "Yes"]
+dat_class$col <- ifelse(dat_class$`Significance on class level` == "Yes", "red", "black")
+dat_class$col2 <- ifelse(dat_class$`Drug Class` %in% expected_class, "#FFE084", "#B9BFE5")
+
+
+pdf(file = "Heatmap_circos.pdf", height = 10)
+
+ht_list = 
+  rowAnnotation('class' = anno_mark(at = which(!duplicated(dat1$`Corresponding letter in plot`)),
+                                    labels = unique(as.character(dat1$`Corresponding letter in plot`)), side = 'left', 
+                                    labels_gp = gpar(col = dat_class$col), lines_gp = gpar(col = dat_class$col2)))+
+  rowAnnotation("Prescription" = anno_barplot(dat1$`Prescription proportion`, bar_width = 1, gp = gpar(fill = '#007FB6'), 
+                                              width = unit(2, "cm")), show_annotation_name = FALSE) +
+  rowAnnotation("OR" = anno_barplot(mat1[,-2], bar_width = 1, width = unit(3, "cm"),baseline = 1,
+                                    gp = gpar(fill = dat1$OR_col)
+  ), 
+  show_annotation_name = FALSE) + 
+  Heatmap(mat2, name = "Pvalue", cluster_rows = FALSE, col = col_fun1,
+          row_split = dat1$`Corresponding letter in plot`,
+          row_title = rep('',length(table(dat1$`Corresponding letter in plot`))),
+          row_title_side = 'right',
+          row_names_side = 'right',
+          show_row_names = T,
+          row_gap = unit(sector_grouping$Gap, "mm"),
+          heatmap_legend_param = list(title = "P value"), width = ncol(mat2)*unit(4, "mm"))
+
+
+ht_list <- ht_list + rowAnnotation('sig_agent' = anno_mark(at = select_table$`Corresponding number in plot`,
+                                labels = select_table$`Drug Agent`))
+
+
+
+
+
+lgd_list = list(
+  Legend(labels = c('Significant', "NotSig"),
+         legend_gp = gpar(fill = c("red", "black")), title = "Drug class", labels_gp = gpar(col = "black")),
+  Legend(labels = c('Expected', "Unexpected"), title = "Association", type = "lines", 
+         legend_gp = gpar(col = c("#FFE084", "#B9BFE5")), grid_width = unit(1, "cm")),
+  
+  Legend(labels = c("OR < 0.8", "NotSig", "OR > 1.5"), title = "Odds Ratio (OR)", 
+         legend_gp = gpar(fill = c("#81C26E", "#FFF6F4", "#FF9671"))),
+  Legend(labels = c("Relative proportion"), title = "Prescription",
+         legend_gp = gpar(fill = '#007FB6'))
+)
+
+
+draw(ht_list, padding = unit(c(2, 2, 20, 2), "mm"), row_split = dat1$`Corresponding letter in plot`, 
+     heatmap_legend_list = lgd_list, heatmap_legend_side = "bottom")
+anno_title = c(
+  # "Total" = "Total \n information",
+  "Prescription" = "Prescription", 
+  "OR" = "Odds \n Ratio")
+for(an in names(anno_title)) {
+  decorate_annotation(an, {
+    grid.text(anno_title[an], y = unit(1, "npc") + unit(3, "mm"), just = "bottom")
+  })
+}
+ht_title = c("Pvalue" = "Pvalue")
+for(an in names(ht_title)) {
+  decorate_heatmap_body(an, {
+    grid.text(ht_title[an], y = unit(1, "npc") + unit(3, "mm"), just = "bottom")
+  })
+}
+
+
+dev.off()
