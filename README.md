@@ -2,9 +2,9 @@
 
 # This repository is used for sharing R codes to generate important figures in this drug-microbiome-colonization project.
 
-# R version 4.3.0 (2023-04-21 ucrt)
-# Platform: x86_64-w64-mingw32/x64 (64-bit)
-# Running under: Windows 11 x64 (build 22631)
+R version 4.3.0 (2023-04-21 ucrt)
+Platform: x86_64-w64-mingw32/x64 (64-bit)
+Running under: Windows 11 x64 (build 22631)
 
 # Matrix products: default
 
